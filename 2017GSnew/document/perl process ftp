@@ -1,0 +1,265 @@
+http://www.perlmonks.org/?node_id=241889
+
+
+FTP Transfer Status
+
+by allyc	Log inCreate a new user The Monastery Gates Super Search 
+Seekers of Perl Wisdom Meditations PerlMonks Discussion 
+Obfuscation Reviews Cool Uses For Perl Perl News Q&A Tutorials 
+Poetry Recent Threads Newest Nodes Donate What's New
+on Mar 11, 2003 at 00:23 UTC ( #241889=perlquestion: print w/replies, xml )	Need Help??
+allyc has asked for the wisdom of the Perl Monks concerning the following question:
+Hi Monks..
+I was wandering if you would be able to help me with a Perl Problem. I am writing a script that needs to FTP large files from my server to remote FTP servers and be evoked from a web browser
+
+The problem is that some of these transfers take about 10 minutes to transfer. I have managed to use the NET:FTP module to complete the transfer, however I would like to be able to return the status of the transfer to the screen so the user can see a % complete and also an estimated time remaining. This will stop users refreshing the page or navigating away causing the transfer to fail.
+
+I have seen that this can be done (I think it was in the Webmin Application on Linux when installing Perl Moduled) but I cant find any documents or reference to how it is done..
+
+I am guessing I need to monitor the bytes the Net::FTP module has sent to the remote host and every few seconds process the result to work out times etc…. but how can I check how much data has been sent while the transfer is in progress?????
+
+Hope this makes sense!
+
+Al
+
+Comment on FTP Transfer Status
+Replies are listed 'Best First'.
+Re: FTP Transfer Status 
+by IndyZ on Mar 11, 2003 at 06:18 UTC
+Check out the libcurl Perl binding. It lets you define a callback for progress updates during the transfer.
+--
+IndyZ
+
+[reply]
+Re: FTP Transfer Status 
+by bronto on Mar 11, 2003 at 09:31 UTC
+You had a lot of Perl solutions, so it's time for a non-perl one :-) you could spawn a call to the program wget via a system call: wget is available for Windows and a lot of UNIXes and provides a nice progress indicator for the download, that is suitable to be tailed on a UNIX console, and hence can easily go on a web page.
+
+Watch out for output buffering!
+
+Ciao!
+--bronto
+
+The very nature of Perl to be like natural language--inconsistant and full of dwim and special cases--makes it impossible to know it all without simply memorizing the documentation (which is not complete or totally correct anyway). 
+--John M. Dlugosz
+[reply]
+[d/l]
+[select]
+Re: FTP Transfer Status 
+by meetraz on Mar 11, 2003 at 02:35 UTC
+According to the documentation:
+Hash - If given a reference to a file handle (e.g., "\*STDERR"), print
++ hash marks (#) on that filehandle every 1024 bytes.
+[download]
+Maybe you could use this to gather progress?
+
+Update:Net::FTP is writen in OO-style. Maybe you could write your own subclass, and simply inherit from Net::FTP? Implement your own get() method that reports back the transfer progress you need.
+
+Update:Looks like you don't even need to do that.. instead of calling the get() method, you can call retr() directly, and handle all the file reading/writing yourself.
+
+[reply]
+[d/l]
+Re: Re: FTP Transfer Status 
+by pg on Mar 11, 2003 at 03:24 UTC
+We have a little bit misunderstanding of retr() here ;-), and retr() absolutely does not provide you the kind of control you are looking for, over file transfer.
+
+FTP involves two TCP connections, control connection and data connection. When you do things such like LIST etc., the control connection is used. When you do get() or retr(), the data connection is used.
+
+For the control connection, it is always the FTP server listens for TCP connection, and your client connects to the server.
+
+For the data connection, there are two modes:
+active mode (default). In this mode, the FTP client (your script) listens for TCP connection, and the FTP server side connects to you.
+passive mode. In this mode, the FTP server listens for TCP connection, and your client script connects to the server.
+Internally, both get() and retr() resolve to the same FTP command "RETR", but before retr(), the two sides of FTP would negotiate and go to passive mode. In both mode, Net::FTP has full control of socket reading and writing, not your script.
+
+There is no way Net::FTP can provide what allyc wants. To subclass Net::FTP sounds reasonable.
+[reply]
+Re: FTP Transfer Status 
+by phydeauxarff on Mar 11, 2003 at 18:34 UTC
+Why not just turn on hashmarks?
+ use Net::FTP;
+    $ftp = Net::FTP->new("ftp.microsoft.com", Debug => 0);
+    $ftp->login("anonymous",'-anonymous@');
+    $ftp->cwd("MISC");
+    $ftp->hash(STDOUT,1024);
+    $ftp->get("NBFCP.TXT");
+    $ftp->quit;
+
+of course, to display this in a CGI would be a bit more effort since the hash marks don't have line feeds.
+[reply]
+Re: Re: FTP Transfer Status 
+by DrManhattan on Mar 11, 2003 at 19:44 UTC
+This is kind of kludgey, but here's a way to output arbitrary text for each hash mark Net::FTP prints.
+#!/usr/bin/perl
+
+use strict;
+use Net::FTP;
+
+my $BYTES_PER_HASH = 1024;
+
+# Fork a child process for Net::FTP
+# and capture its output one char at
+# a time
+if (open(FTP, "-|"))
+#这个是管道的使用，意思是把FTP作为一个管道，-表示把stdid送给FTP
+{
+        # parent
+        my $count = 1;
+        while (getc(FTP))
+        {
+                print $BYTES_PER_HASH * $count, " bytes received\n";
+                $count++;
+        }
+        print "Done\n";
+}
+else
+{
+        # child
+        my $ftp = Net::FTP->new("ftp.microsoft.com", Debug => 0);
+        $ftp->login("anonymous","-anonymous\@");
+        $ftp->cwd("MISC");
+        $ftp->hash(\*STDOUT, $BYTES_PER_HASH);
+        $ftp->get("NBFCP.TXT");
+        $ftp->quit;
+}
+
+上面这个话句执行的顺序很有意思，不是按if的顺序执行的。
+[download]
+If you know the size of the file (or use Net::FTP to get it before starting the download), you could use this to output a progress meter. If you don't want to output plain text, you could output javascript that updates a graphic meter instead.
+
+-Matt
+
+[reply]
+[d/l]
+Re: Re: Re: FTP Transfer Status 
+by allyc on Mar 11, 2003 at 21:18 UTC
+Guys,
+Thanks for all of your help. I am looking at Matt's solution. The fork part of the script doesn’t seem to work properly. I have tried it on a Windows machine running Perl 5.6.1 and it runs the child process and carries out the FTP but it dosnt print the Bytes recieved, however on a Linux machine also with Perl 5.6.1 it just prints done. and FTP's nothing and also displays no Bytes Recieved.
+
+Any ideas because this method looks very promising.
+
+Thanks again for all your help.
+
+Al
+
+[reply]
+Re: Re: Re: Re: FTP Transfer Status 
+by DrManhattan on Mar 11, 2003 at 23:17 UTC
+Re: FTP Transfer Status 
+by lgas on Apr 23, 2016 at 13:04 UTC
+I did it like this, using Net::FTP and without having to modify it:
+
+use Net::FTP;
+use IO::Callback;
+
+my $BytesPerHash = 2048;
+my $HashHandle = IO::Callback->new('>',
+        sub {
+                # activity code
+                # called every $BytesPerHash
+        }
+);
+
+my $ftp = Net::FTP->new($host, Timeout => $Timeout);
+$ftp->hash($HashHandle, $BytesPerHash);
+$ftp->login($Username, $Password);
+$ftp->binary;
+$ftp->put($localFile, $remoteFile);
+[...]
+[download]
+Works nicely
+
+[reply]
+[d/l]
+Re^2: FTP Transfer Status 
+by Anonymous Monk on May 30, 2016 at 14:43 UTC
+This code works but it's kinda different from sending the hash to the console.
+
+Let's say normally you'd get around 10 hash marks, using this code you get 1, I don't have a clue what influences this but every hask mark represents 10 of the normal hash using this
+
+关于这个解释是，hash有一个块大小，ftp有一个参数是blocksize，这两个需要一样，但是结果仍然不是100%，因为file大小永远不可能每次是整数块，所以这个不能用来校验。只能算速率或者是百分比。
+
+
+湛哥的代码：注意其中的红色部分，如果不设置，刚好差大约10，如果设置成一样的话，会差不到一个块的字节数。
+use strict;
+use warnings;
+use Net::FTP;
+use IO::Callback;
+
+my $TotalBytes = 0;
+my $BytesPerHash = 10240;
+my $count = 0;
+my $HashHandle = IO::Callback->new('>',
+        sub {
+                $count++;
+        }
+);
+
+sub ftpdownload
+{
+        my $ftp = Net::FTP->new($_[0],BlockSize => $BytesPerHash, Debug => 0) or die "FTP cannot connect to host: $!";
+        $ftp->login($_[1],$_[2]) or die "FTP cannot login ", $ftp->message;
+        $ftp->binary;
+        print $ftp->size($_[3]);
+        $ftp->hash($HashHandle, $BytesPerHash);
+        $ftp->get($_[3]) or die "FTP cannot download ",$ftp->message;
+        $ftp->quit();
+        return 0;
+}
+
+sub main
+{
+        print "Start ftp download ...\n";
+        my $ret=ftpdownload('192.168.6.128','root','root','/root/graphite-web-0.9.10.tar.gz');
+        if($ret!=0)
+        {
+                return -2;
+        }
+        else
+        {
+                $TotalBytes = $BytesPerHash * $count;
+                print "\nTotalBytes=$TotalBytes\n";
+        }
+        return 0;
+}
+
+my $result=main();
+exit($result);
+
+[reply]
+Re: FTP Transfer Status 
+by allyc on Mar 12, 2003 at 22:19 UTC
+Again thanks to everyone who has helped me with this.
+Just to let you know that I couldn’t get the fork method to work reliably, so I have opted to write a sub class for Net:FTP.
+
+Using the Hash Output as a base I have managed to add the ability to print out the % of the transfer that has completed. This then updates a graph and the status in the browser screen.
+
+Thanks again,
+
+Alistair
+
+[reply]
+Re: Re: FTP Transfer Status 
+by donno20 on Apr 14, 2003 at 10:21 UTC
+Hi, 
+The discussions are interesting. But I have no idea how to get the progress shown in IE via CGI ? 
+Can you show me on this ? I am working similiar work like yours. 
+Thanks. 
+^_^
+[reply]
+Re: Re: Re: FTP Transfer Status 
+by allyc on Apr 24, 2003 at 20:50 UTC
+Hi,
+The way that i found to achieve this is to create a function that can track the status and output the results to screen. I then looked at how the hash function in the NET::FTP module worked and then instead of outputting a # for every byte sent or received I made it call my function supplying it with the bytes that have been transferred.
+
+You can then calculate on the fly the % remaining and calculate average times etc.....
+
+One hint is to make sure you flush the output from your script to the browser instead of buffering it. There are some good nodes on how to disable output buffering.
+
+I hope this points you in the right direction.
+
+If you need any pointers then let me know.
+
+Alistair
+
+

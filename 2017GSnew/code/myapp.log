@@ -1,0 +1,4 @@
+Mon, 16 Oct 2017 10:31:32 testlogging.py[line:16] INFO This is info message [Errno 2] No such file or directory: 'd:\\test'
+Mon, 16 Oct 2017 10:32:41 testlogging.py[line:16] ERROR This is info message [Errno 2] No such file or directory: 'd:\\test'
+Wed, 01 Nov 2017 14:55:48 testlogging.py[line:19] ERROR This is info message [Errno 2] No such file or directory: 'd:\\test'
+Wed, 01 Nov 2017 14:56:40 testlogging.py[line:20] ERROR This is info message [Errno 2] No such file or directory: 'd:\\test'
